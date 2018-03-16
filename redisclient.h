@@ -1527,17 +1527,16 @@ namespace redis
       return recv_bulk_reply_(socket);
     }
     
-    void zadd(const string_type & key, double score, const string_type & member, const string_type & zaddtype)
+    void zadd(const string_type & key, double score, const string_type & member)
     {
       int socket = get_socket(key);
-	  if(zaddtype == "") send_(socket, makecmd("ZADD") << key << score << member);
-	  else send_(socket, makecmd("ZADD") << key << zaddtype << score << member);
+      send_(socket, makecmd("ZADD") << key << score << member);
       recv_int_ok_reply_(socket);
     }
     
     void zadd(const string_type & key, const string_score_pair & value)
     {
-      zadd(key, value.second, value.first, "");
+      zadd(key, value.second, value.first);
     }
 	
 	void zadd(const string_type & key, const string_score_vector & value)
@@ -1710,11 +1709,11 @@ namespace redis
       return recv_int_reply_(socket);
     }
     
-    string_type zscore( const string_type& key, const string_type& element )
+    double zscore( const string_type& key, const string_type& element )
     {
       int socket = get_socket(key);
       send_(socket, makecmd("ZSCORE") << key << element);
-      return recv_bulk_reply_(socket);
+      return boost::lexical_cast<double>( recv_bulk_reply_(socket) );
     }
     
     int_type zunionstore( const string_type & dstkey, const string_vector & keys, const std::vector<double> & weights = std::vector<double>(), aggregate_type aggragate = aggregate_sum )
