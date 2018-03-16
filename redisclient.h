@@ -899,18 +899,18 @@ namespace redis
       return recv_int_reply_<INT_TYPE>(socket);
     }
     
-    bool exists(const string_type & key)
+    int exists(const string_type & key)
     {
       int socket = get_socket(key);
       send_(socket, makecmd("EXISTS") << key);
-      return recv_int_reply_(socket) == 1;
+      return recv_int_reply_(socket);
     }
     
-    bool del(const string_type & key)
+    int del(const string_type & key)
     {
       int socket = get_socket(key);
       send_(socket, makecmd("DEL") << key);
-      return recv_int_reply_(socket) != 0;
+      return recv_int_reply_(socket);
     }
 
     template<typename ITERATOR>
@@ -1054,7 +1054,7 @@ namespace redis
     /**
      * @warning Not cluster save (the old name and the new one must be on the same redis server)
      */
-    bool renamenx(const string_type & old_name, const string_type & new_name)
+    int renamenx(const string_type & old_name, const string_type & new_name)
     {
       int source_socket = get_socket(old_name);
       int destin_socket = get_socket(new_name);
@@ -1068,7 +1068,7 @@ namespace redis
       }
       
       send_(source_socket, makecmd("RENAMENX") << old_name << new_name);
-      return recv_int_reply_(source_socket) == 1;
+      return recv_int_reply_(source_socket);
     }
 
     /**
@@ -1527,18 +1527,32 @@ namespace redis
       return recv_bulk_reply_(socket);
     }
     
-    void zadd(const string_type & key, double score, const string_type & member)
+    void zadd(const string_type & key, double score, const string_type & member, const string_type & zaddtype)
     {
       int socket = get_socket(key);
-      send_(socket, makecmd("ZADD") << key << score << member);
+	  if(zaddtype == "") send_(socket, makecmd("ZADD") << key << score << member);
+	  else send_(socket, makecmd("ZADD") << key << zaddtype << score << member);
       recv_int_ok_reply_(socket);
     }
     
     void zadd(const string_type & key, const string_score_pair & value)
     {
-      zadd(key, value.second, value.first);
+      zadd(key, value.second, value.first, "");
     }
-    
+	
+	void zadd(const string_type & key, const string_score_vector & value)
+    {
+      int socket = get_socket(key);
+	  makecmd m("ZADD");
+	  m << key;
+      
+      for(size_t i=0; i < value.size(); i++)
+        m << value[i].second << value[i].first;
+      
+      send_(socket, m);
+      recv_int_ok_reply_(socket);
+    }
+	
     void zrem(const string_type & key, const string_type & member)
     {
       int socket = get_socket(key);
@@ -1637,6 +1651,10 @@ namespace redis
         std::cerr << "Adding limit: " << offset << " " << max_count << std::endl;
         m << "LIMIT" << offset << max_count;
       }
+	  if(withscores) 
+	  {  
+        m << "WITHSCORES";  
+      }
         
       send_(socket, m);
       recv_multi_bulk_reply_(socket, out);
@@ -1692,11 +1710,11 @@ namespace redis
       return recv_int_reply_(socket);
     }
     
-    double zscore( const string_type& key, const string_type& element )
+    string_type zscore( const string_type& key, const string_type& element )
     {
       int socket = get_socket(key);
       send_(socket, makecmd("ZSCORE") << key << element);
-      return boost::lexical_cast<double>( recv_bulk_reply_(socket) );
+      return recv_bulk_reply_(socket);
     }
     
     int_type zunionstore( const string_type & dstkey, const string_vector & keys, const std::vector<double> & weights = std::vector<double>(), aggregate_type aggragate = aggregate_sum )
@@ -1770,11 +1788,11 @@ namespace redis
       return recv_int_reply_(socket);
     }
     
-    bool hset( const string_type & key, const string_type & field, const string_type & value )
+    int hset( const string_type & key, const string_type & field, const string_type & value )
     {
       int socket = get_socket(key);
       send_(socket, makecmd("HSET") << key << field << value);
-      return recv_int_reply_(socket) == 1;
+      return recv_int_reply_(socket);
     }
     
     string_type hget( const string_type & key, const string_type & field )
@@ -1784,11 +1802,11 @@ namespace redis
       return recv_bulk_reply_(socket);
     }
     
-    bool hsetnx( const string_type & key, const string_type & field, const string_type & value )
+    int hsetnx( const string_type & key, const string_type & field, const string_type & value )
     {
       int socket = get_socket(key);
       send_(socket, makecmd("HSETNX") << key << field << value);
-      return recv_int_reply_(socket) == 1;
+      return recv_int_reply_(socket);
     }
     
     void hmset( const string_type & key, const string_vector & fields, const string_vector& values )
@@ -1800,7 +1818,6 @@ namespace redis
       
       for(size_t i=0; i < fields.size(); i++)
         m << fields[i] << values[i];
-      
       send_(socket, m);
       recv_ok_reply_(socket);
     }
@@ -1838,11 +1855,11 @@ namespace redis
       return recv_int_reply_(socket);
     }
     
-    bool hexists( const string_type & key, const string_type & field )
+    int hexists( const string_type & key, const string_type & field )
     {
       int socket = get_socket(key);
       send_(socket, makecmd("HEXISTS") << key << field);
-      return recv_int_reply_(socket) == 1;
+      return recv_int_reply_(socket);
     }
     
     bool hdel( const string_type& key, const string_type& field )
@@ -2338,7 +2355,6 @@ namespace redis
       
       if (line[0] != REDIS_PREFIX_INT_REPLY)
         throw protocol_error("unexpected prefix for integer reply");
-      
       return boost::lexical_cast<INT_TYPE>(line.substr(1));
     }
     
@@ -2360,10 +2376,10 @@ namespace redis
     }
     
     void recv_int_ok_reply_(int socket)
-    {
-      if (recv_int_reply_(socket) != 1)
-        throw protocol_error("expecting int reply of 1");
-    }
+	{      
+      if (recv_int_reply_(socket) < 0)   
+        throw protocol_error("expecting int reply of <0");  
+    } 
     
     inline int get_socket(const string_type & key)
     {
